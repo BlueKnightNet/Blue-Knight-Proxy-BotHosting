@@ -1,0 +1,10 @@
+.git/
+.env
+.data/
+.cache/
+.bothosting/
+__pycache__/
+*.pyc
+*.log
+bridge-config.json
+.dev.vars

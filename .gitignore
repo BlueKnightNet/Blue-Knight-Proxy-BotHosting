@@ -1,0 +1,13 @@
+.env
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+data/
+.wrangler/
+node_modules/
+bridge-config.json
+.dev.vars
+.data/
+.cache/
+.bothosting/
