@@ -238,6 +238,7 @@ $('copy-key').addEventListener('click', () => copy(statusData?.registration_secr
 $('copy-bridge-link').addEventListener('click', () => copy(statusData?.bridge?.tg_link, 'Telegram WEB link', $('bridge-link')));
 for (const id of ['web-link', 'tg-link', 'bridge-link']) $(id).addEventListener('click', () => $(id).select());
 $('bridge-form').addEventListener('input', () => { bridgeDirty = true; });
+$('worker-url').addEventListener('input', () => { $('public-ip').value = ''; });
 $('bridge-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (saving) return;
