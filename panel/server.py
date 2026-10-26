@@ -18,11 +18,14 @@ import subprocess
 import threading
 import time
 import zipfile
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
 BRIDGE_ROOT = ROOT.parent / "bridge"
+sys.path.insert(0, str(ROOT.parent))
+from hosting.network import PublicNetwork, panel_origin
 
 
 class Resources:
@@ -156,6 +159,17 @@ def bridge_bundle(proxy):
     return output.getvalue()
 
 
+def standalone_worker(proxy):
+    origin = proxy.hosting_origin()
+    if not origin:
+        raise ValueError("Open and sign in through your hosting HTTPS domain first")
+    source = (BRIDGE_ROOT / "worker-standalone.mjs").read_text()
+    ending = "export default {fetch:createBridgeHandler()};"
+    config = json.dumps({"UPSTREAM_ORIGIN": origin, "BRIDGE_TOKEN": proxy.bridge["token"]})
+    replacement = "const BLUE_KNIGHT_CONFIG = " + config + ";\nconst handle = createBridgeHandler();\nexport default {fetch(request, env, ctx) { return handle(request, {...env, ...BLUE_KNIGHT_CONFIG}, ctx); }};"
+    return ("// PRIVATE deployment file: contains your bridge token. Do not publish.\n" + source.replace(ending, replacement)).encode()
+
+
 def decode_secret(value):
     value = value.strip()
     if re.fullmatch(r"[0-9a-fA-F]{32}", value):
@@ -269,6 +283,7 @@ class Proxy:
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.resources = Resources(self.directory)
+        self.network = PublicNetwork(self.directory, int(os.environ.get("SERVER_PORT") or os.environ.get("PUBLIC_PORT") or "0"))
         self.path = self.directory / "sponsor.json"
         self.settings = validate_settings(json.loads(self.path.read_text())) if self.path.exists() else validate_settings({})
         self.process = None
@@ -307,7 +322,9 @@ class Proxy:
     def hosting_origin(self):
         if os.environ.get("PANEL_PUBLIC_ORIGIN"):
             return validate_bridge({"worker_url": os.environ["PANEL_PUBLIC_ORIGIN"]})["worker_url"]
-        return "https://" + os.environ.get("PANEL_PUBLIC_DOMAIN", "YOUR-APP.apps.bot-hosting.cloud")
+        if os.environ.get("PANEL_PUBLIC_DOMAIN"):
+            return "https://" + os.environ["PANEL_PUBLIC_DOMAIN"]
+        return self.network.origin
 
     def apply_bridge(self, data):
         new = validate_bridge(data)
@@ -452,15 +469,16 @@ class Proxy:
     def status(self):
         self.sample_usage()
         key, host = decode_secret(self.secret)
-        public_host = os.environ.get("PUBLIC_HOST", "")
-        public_port = os.environ.get("PUBLIC_PORT", os.environ.get("SERVER_PORT", ""))
+        public_host = self.network.host
+        public_port = str(self.network.public_port) if self.network.public_port else ""
         full = (b"\xee" + key + host.encode()).hex()
         params = f"server={public_host}&port={public_port}&secret={full}"
         web_params = f"server={urlsplit(self.bridge['worker_url']).hostname or ''}&secret=dd{key.hex()}"
         return {"running": self.ready(), "engine": "Telemt",
                 "uptime": int(time.time() - self.started), "host": public_host, "port": public_port,
                 "tls_host": host, "settings": self.settings,
-                "tg_link": "tg://proxy?" + params, "web_link": "https://t.me/proxy?" + params,
+                "tg_link": "tg://proxy?" + params if public_host else "", "web_link": "https://t.me/proxy?" + params if public_host else "",
+                "network_ready": bool(public_host),
                 "registration_secret": key.hex(),
                 "resources": self.resources.snapshot(),
                 "usage": {**self.usage, **self.live_usage, "total_bytes": self.usage["upload_bytes"] + self.usage["download_bytes"]},
@@ -627,6 +645,8 @@ def handler_for(app):
             if self.path.startswith("/_webbridge/"):
                 return self.relay_web()
             path = urlsplit(self.path).path
+            if path == "/_network/probe" and hasattr(app.proxy, "network"):
+                return self.reply(200, {"instance": app.proxy.network.probe_id})
             if path == "/api/setup/status":
                 return self.reply(200, {"required": not bool(app.password_hash)})
             if path == "/health":
@@ -643,6 +663,8 @@ def handler_for(app):
             if path == "/api/status":
                 if not session:
                     return self.reply(401, {"error": "Sign in required"})
+                if hasattr(app.proxy, "network"):
+                    app.proxy.network.observe_owner_origin(self.headers.get("Host"))
                 return self.reply(200, {**app.proxy.status(), "csrf": session["csrf"]})
             if path == "/api/bridge/bundle":
                 if not session:
@@ -654,7 +676,10 @@ def handler_for(app):
             if path == "/api/bridge/standalone":
                 if not session:
                     return self.reply(401, {"error": "Sign in required"})
-                return self.reply(200, (BRIDGE_ROOT / "worker-standalone.mjs").read_bytes(), "text/javascript; charset=utf-8", filename="blue-knight-worker.mjs")
+                try:
+                    return self.reply(200, standalone_worker(app.proxy), "text/javascript; charset=utf-8", filename="blue-knight-worker-private.mjs")
+                except ValueError as error:
+                    return self.reply(400, {"error": str(error)})
             if path == "/api/bridge/token":
                 if not session:
                     return self.reply(401, {"error": "Sign in required"})
@@ -684,6 +709,8 @@ def handler_for(app):
                     return self.reply(400, {"error": "Invalid setup request"})
                 try:
                     app.configure(code, password)
+                    if hasattr(app.proxy, "network"):
+                        app.proxy.network.observe_owner_origin(self.headers.get("Host"))
                     return self.reply(200, {"ok": True})
                 except ValueError as error:
                     return self.reply(400, {"error": str(error)})
@@ -696,7 +723,9 @@ def handler_for(app):
                 token = app.login(password)
                 if not token:
                     return self.reply(401, {"error": "Incorrect password or too many attempts. Wait one minute."})
-                secure = "; Secure" if os.environ.get("PANEL_PUBLIC_ORIGIN", "").startswith("https://") else ""
+                if hasattr(app.proxy, "network"):
+                    app.proxy.network.observe_owner_origin(self.headers.get("Host"))
+                secure = "; Secure" if os.environ.get("PANEL_PUBLIC_ORIGIN", "").startswith("https://") or panel_origin(self.headers.get("Host")) else ""
                 return self.reply(200, {"ok": True}, cookie=f"panel_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800{secure}")
             session = self.session()
             if not session or not hmac.compare_digest(self.headers.get("X-CSRF-Token", ""), session["csrf"]):
@@ -761,6 +790,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=proxy.network.discover, daemon=True).start()
     print(f"[panel] listening on HTTP port {port}; admin authentication required", flush=True)
     while True:
         time.sleep(2)

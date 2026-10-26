@@ -20,6 +20,9 @@ SECRET = "ee" + "12" * 16 + b"www.cloudflare.com".hex()
 
 class FakeProxy:
     bridge = {"enabled": True, "token": "test-token", "worker_url": "https://worker.example"}
+
+    def hosting_origin(self):
+        return "https://demo.apps.bot-hosting.cloud"
     def ready(self):
         return True
 
@@ -320,7 +323,10 @@ class HTTPTests(unittest.TestCase):
         code, _, worker = self.request("/api/bridge/standalone", headers={"Cookie": cookie})
         self.assertEqual(code, 200)
         self.assertIn(b"export default", worker)
-        self.assertNotIn(b"test-token", worker)
+        self.assertIn(b"test-token", worker)
+        self.assertIn(b"https://demo.apps.bot-hosting.cloud", worker)
+        self.assertIn(b"PRIVATE deployment file", worker)
+        self.assertNotIn(b"test-token", (ROOT / "bridge/worker-standalone.mjs").read_bytes())
         code, _, token = self.request("/api/bridge/token", headers={"Cookie": cookie})
         self.assertEqual(code, 200)
         self.assertEqual(json.loads(token)["token"], "test-token")

@@ -1,6 +1,6 @@
 # Blue Knight Proxy: Bot-Hosting setup
 
-This repository supports Bot-Hosting's Python runtime. Use `bothosting.py` as the
+This repository supports Bot-Hosting's Python runtime. Use `main.py` as the
 entry file. You do not need Docker, root access, pip packages or a separate disk
 volume. State is stored in `.data/` on the deployment's persistent storage.
 
@@ -8,28 +8,31 @@ volume. State is stored in `.data/` on the deployment's persistent storage.
 
 1. In Bot-Hosting create a deployment from your public GitHub fork.
 2. Select the **Python** runtime, version **3.12**, and branch **main** (or your chosen branch).
-3. Set **Entry file** to `bothosting.py`. If using a custom startup command, use
-   `python3 -u bothosting.py` from the deployment root.
+3. Set **Entry file** to `main.py`. If using a custom startup command, use
+   `python3 -u main.py` from the deployment root.
 4. Stay within your free resource pool. No paid package is required by the code.
 5. Enable the deployment's public HTTPS subdomain. A branded alias such as
    `join-blueknight-net-tg-<id>` is optional.
 
-## Set deployment environment variables
+## Networking is automatic
 
-| Variable | Value |
-| --- | --- |
-| `PANEL_PUBLIC_ORIGIN` | Your complete HTTPS panel origin, e.g. `https://my-app.apps.bot-hosting.cloud` |
-| `PUBLIC_HOST` | Your deployment's node hostname from Networking, e.g. `fi16.bot-hosting.cloud` |
-| `PUBLIC_PORT` | Its allocated public port, also exposed by `SERVER_PORT` |
-| `PANEL_STORAGE_LIMIT_MB` | Optional; defaults to the free plan's 512. Change if your deployment has another storage allocation. |
+Leave PUBLIC_HOST, PUBLIC_PORT and PANEL_PUBLIC_ORIGIN unset for normal deployment.
+The application reads SERVER_PORT from the host. If SERVER_IP is not a usable
+public address, it discovers the node's public IPv4 and checks a per-process
+identity response through the allocated port before publishing a link.
 
-The examples are not addresses to copy blindly: use your own deployment's values.
-Do not set `SERVER_PORT` yourself; the host allocates it. The application reads
-it automatically. If `PUBLIC_PORT` is omitted it defaults to `SERVER_PORT`.
+Open your HTTPS panel URL to set up the owner password. Once ownership is verified,
+the app records that URL automatically for Worker generation. No account API key
+is required. Wrong `.apps` aliases in PUBLIC_HOST are ignored rather than put into
+native Telegram links.
 
-Optional: keep an existing `SECRET` to preserve your proxy key. Keep an existing
-`PANEL_PASSWORD_HASH` or set `PANEL_PASSWORD` (8+ characters) if you want to skip
-browser setup. Password variables should be marked secret in the host panel.
+For advanced environments only, PUBLIC_HOST can supply a real node hostname;
+it must still pass verification. PANEL_PUBLIC_ORIGIN can override HTTPS origin
+detection for a custom domain. PANEL_STORAGE_LIMIT_MB defaults to 512 on the free
+plan and can be adjusted for another storage allocation.
+
+Leave PANEL_PASSWORD and PANEL_PASSWORD_HASH unset to choose your password in the
+browser. Existing owner password files are preserved across updates.
 
 ## Start and sign in
 
@@ -54,20 +57,23 @@ Your panel HTTPS address and native Telegram TCP link therefore share one
 allocation. Native clients' IP addresses are passed to the loopback engine using
 PROXY protocol. Metrics/control ports are private.
 
-## Cloudflare WEB bridge
+## Cloudflare WEB bridge: automatic configuration
 
-1. Create a Cloudflare account at https://dash.cloudflare.com/sign-up, verify your
-   email and open Workers & Pages. No purchased domain is required.
-2. In your panel open **Cloudflare bridge** and copy the standalone Worker code.
-3. In Cloudflare create a Hello World Worker using the branded name from the
-   panel. Open Edit code, replace the entire example with the copied code and deploy.
-4. In Worker settings > Variables and Secrets set `UPSTREAM_ORIGIN` (Text) to **Your hosting origin** from
-   the panel, and `BRIDGE_TOKEN` (Secret) using **Copy bridge token**.
-5. Save the workers.dev URL in your panel, leave public IPv4 empty, enable WEB
-   proxy and save. Use a compatible Telegram client.
+1. Create a Cloudflare account, verify your email and open Workers & Pages.
+2. In your own panel open **Cloudflare bridge > Copy ready-to-deploy Worker**.
+3. Create a Hello World Worker using the branded name shown in your panel.
+4. Open Edit code, replace all example code with the copied code, and deploy.
+5. Paste its HTTPS workers.dev URL into your panel, leave Endpoint public IPv4
+   empty, enable WEB proxy and save.
+6. Use Open WEB proxy in Telegram with a client supporting WEB proxies.
 
-Use `UPSTREAM_ORIGIN` for this deployment. No other hosting account or Wrangler
-commands are needed. Each owner uses their own HTTPS origin and private token.
+The copied code already contains your hosting URL and bridge token. No variables,
+secret-pasting, PC, terminal or Wrangler are needed. Keep that private copied code
+out of GitHub and hide it during recordings. The public template in the repository
+has no credentials and is intended for advanced manual configuration.
+
+The owner must still approve deployment in their own Cloudflare account. The app
+cannot create an account or approve a platform login on someone else's behalf.
 
 ## Sponsorship
 
@@ -107,12 +113,12 @@ when their hostnames, ports and saved secrets stay the same.
 
 | Symptom | Check |
 | --- | --- |
-| App unreachable | Python 3.12, entry bothosting.py, allocated SERVER_PORT, deployment logs. |
+| App unreachable | Python 3.12, entry main.py, allocated SERVER_PORT, deployment logs. |
 | Setup screen asks for a code | Read the one-time code from your own deployment logs. |
 | Unexpected existing password | Remove optional PANEL_PASSWORD/PANEL_PASSWORD_HASH overrides only if you intend to use browser setup; existing owner.json still preserves a configured password. |
-| Native link has wrong server | Set PUBLIC_HOST to the assigned node hostname and PUBLIC_PORT to its allocated port. |
-| Worker Not configured | Set UPSTREAM_ORIGIN (Text) and BRIDGE_TOKEN (Secret). |
-| Worker Bridge unavailable | Check the panel /health URL, enabled WEB proxy and the Worker's origin. |
+| Native link has wrong server | Wait for automatic address verification; check deployment logs for network detection retries. |
+| Worker Not configured | Use Copy ready-to-deploy Worker from your own panel, then replace the entire Worker code and deploy. |
+| Worker Bridge unavailable | Check /health, enable WEB proxy, and copy fresh ready-to-deploy code from this panel. |
 | Wrong endpoint IPv4 | Clear the field and save; it must resolve the Worker hostname, not the hosting node. |
 | Bot rejects registration secret | Copy registration key supplies exactly 32 hex characters. |
 | Sponsored channel absent | Check bot registration, Set promotion, promotion tag and propagation time. |

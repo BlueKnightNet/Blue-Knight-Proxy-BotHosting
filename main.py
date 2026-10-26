@@ -101,8 +101,8 @@ def main():
                TCP_ROUTER_PROXY_PROTOCOL="1", METRICS_PORT=str(9092 if public == 9090 else 9090),
                TELEMT_API_PORT=str(9093 if public == 9091 else 9091),
                WEB_LISTEN_PORT=str(18081 if public == 18080 else 18080))
-    env.setdefault("PUBLIC_PORT", str(public))
-    env.setdefault("PUBLIC_HOST", env.get("SERVER_IP", ""))
+    # The platform allocation is authoritative; users no longer enter this port.
+    env["PUBLIC_PORT"] = str(public)
     env.setdefault("PANEL_STORAGE_LIMIT_MB", "512")
     env["PANEL_STORAGE_ROOT"] = str(ROOT)
     child = subprocess.Popen([sys.executable, "-u", str(ROOT / "panel" / "server.py")], env=env, cwd=ROOT)

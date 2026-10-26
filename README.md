@@ -20,44 +20,47 @@ and an optional Cloudflare WEB bridge. Built for Bot-Hosting's Python runtime.
 No Railway account, Docker, root permissions or pip packages are needed.
 The standalone Worker requires no Node.js or Wrangler commands.
 
-## Quick deployment
+## Quick deployment - no manual networking variables
 
 1. Fork this repository and create a Bot-Hosting deployment from your fork.
-2. Select **Python 3.12**, branch **main**, and entry file **bothosting.py**.
-3. If setting a custom startup command, use `python3 -u bothosting.py`.
-4. Enable the hosting HTTPS domain and add these variables using your own values:
+2. Select **Python** and branch **main**. The default entry file is already
+   **main.py**. If choosing a custom startup command, use `python3 -u main.py`.
+3. Enable the deployment's HTTPS domain and start it.
+4. Open `/panel/`, enter the one-time setup code from hosting deployment logs,
+   and choose your own password (8+ characters).
+5. Open Connection links and copy your verified Telegram link.
 
-   | Variable | Value |
-   | --- | --- |
-   | `PANEL_PUBLIC_ORIGIN` | Your complete HTTPS panel origin, without a path |
-   | `PUBLIC_HOST` | Your allocated node hostname from Networking |
-   | `PUBLIC_PORT` | Your allocated public port; otherwise uses SERVER_PORT |
-
-5. Start the deployment. Open `/health`, then `/panel/`.
-6. Copy the one-time setup code from deployment logs and choose your password
-   in the browser. Keep `.data/` intact across updates.
+**Do not enter PUBLIC_HOST, PUBLIC_PORT or PANEL_PUBLIC_ORIGIN for normal setup.**
+The app reads the allocated port, detects the public IPv4, verifies that it reaches
+this exact deployment, and learns your HTTPS panel URL after owner sign-in.
+An HTTPS `.apps.bot-hosting.cloud` alias is never used as a native TCP hostname.
+If detection is still running, the panel waits instead of sharing a broken link.
 
 The first boot downloads pinned Telemt 3.5.14 and verifies the archive checksum.
-Later boots reuse the cached engine. You do not need to attach a separate `/data`
-volume: this host's deployment storage contains `.data/` and `.cache/`.
+State is saved in `.data/` on the deployment's persistent storage. Do not delete
+it when updating. No hosting-account API key is needed in the app.
 
-## Cloudflare bridge from a phone
+## Cloudflare bridge - copy and paste from your phone
 
-In **Cloudflare bridge**, use **Copy standalone Worker code**. Create a Worker
-in Cloudflare's browser editor, replace its example code and deploy. Add:
+1. In your panel open Cloudflare bridge and tap **Copy ready-to-deploy Worker**.
+2. In your Cloudflare account create a Worker, open Edit code, replace all example
+   code with the copied code and deploy.
+3. Copy the resulting workers.dev URL into your panel. Leave endpoint IPv4 empty,
+   enable WEB proxy and save.
 
-| Variable | Cloudflare type | Value |
-| --- | --- | --- |
-| `UPSTREAM_ORIGIN` | Text | Your hosting origin shown in the panel |
-| `BRIDGE_TOKEN` | Secret | Copy bridge token from your own panel |
+**No Cloudflare variables, manual token entry, Node.js or Wrangler commands are
+needed for this flow.** The private copied code already contains your panel URL
+and bridge token. Do not publish that copied file or show its private token in a
+recording. Each owner's panel generates its own configuration.
 
-Save/deploy changes. Paste the workers.dev URL into your panel, leave Endpoint
-public IPv4 empty for automatic resolution, enable WEB proxy and save.
-Connecting users need a Telegram client that supports WEB proxies.
+The repository's [standalone template](bridge/worker-standalone.mjs) is generic
+and has no secrets. It is an advanced alternative requiring UPSTREAM_ORIGIN (Text)
+and BRIDGE_TOKEN (Secret) in Cloudflare settings. Use the panel's copy button for
+the automatic flow. A private desktop/Wrangler bundle remains optional.
 
-The source file is [bridge/worker-standalone.mjs](bridge/worker-standalone.mjs).
-It has no imports or external packages. A private desktop/Wrangler bundle is
-also available as an optional deployment method.
+Hosting-account creation, enabling the host's HTTPS domain, choosing your password,
+Cloudflare account approval and Telegram promotion registration require the owner.
+The application does not bypass those ownership steps.
 
 ## Sponsored channels
 
@@ -91,6 +94,7 @@ Python 3.11+ and a current Node.js release are sufficient for the tests:
 ```sh
 python scripts/test-panel.py
 python scripts/test-port-router.py
+python scripts/test-network.py
 node --test scripts/test-bridge.mjs
 ```
 
@@ -98,8 +102,9 @@ The deployed app itself needs only Python and the downloaded Telemt engine.
 
 ## Project layout
 
-- `bothosting.py`: verified engine download, startup and process supervision.
+- `main.py`: verified engine download, startup and process supervision.
 - `hosting/port_router.py`: bounded HTTP/FakeTLS routing on one public port.
+- `hosting/network.py`: verified public-address detection and owner-origin setup.
 - `panel/`: owner UI, authenticated API and private engine supervision.
 - `bridge/`: standalone Worker, optional desktop bundle and instructions.
 - `docs/SETUP.md`: complete setup and troubleshooting guide.

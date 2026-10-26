@@ -1,26 +1,22 @@
-Blue Knight standalone Telegram WEB bridge
+Blue Knight WEB bridge - phone setup
 
-PHONE / BROWSER SETUP (no terminal)
-1. Create a Cloudflare Hello World Worker, then open Edit code.
-2. Paste ALL of worker-standalone.mjs and deploy.
-3. Settings > Variables and Secrets:
-   RAILWAY_ORIGIN = your Railway HTTPS origin (Text)
-   BRIDGE_TOKEN = Copy bridge token from your own panel (Secret)
-4. Save and deploy changes.
-5. Save the workers.dev URL in your panel. Leave Endpoint public IPv4 empty,
-   enable WEB proxy, and save. Use a compatible Telegram client.
+AUTOMATIC FLOW (recommended)
+1. Open your own panel > Cloudflare bridge > Copy ready-to-deploy Worker.
+2. In Cloudflare's browser editor paste it over the example Worker and deploy.
+3. Paste the workers.dev URL back into your panel, enable WEB proxy and save.
+No variables, token entry, PC or Wrangler commands are needed.
+The copied file contains a private token: do not publish it or expose it in videos.
 
-The standalone file has no imports or runtime packages. Your phone is enough.
-Each deployment owner uses their own Railway origin and private token.
+ADVANCED / GENERIC TEMPLATE
+worker-standalone.mjs in this ZIP is generic. To deploy that file directly, set
+UPSTREAM_ORIGIN (Text) to your panel HTTPS URL and BRIDGE_TOKEN (Secret) from
+bridge-config.json. Or use the panel copy button for the already-configured code.
 
-OPTIONAL DESKTOP SETUP
-Run inside the extracted folder on your PC:
+OPTIONAL DESKTOP FLOW
+Inside this extracted folder run:
   npx --yes wrangler@4 login
   npx --yes wrangler@4 deploy
   node upload-secret.mjs
-Your Railway origin is in wrangler.jsonc -> vars -> RAILWAY_ORIGIN.
-These commands are not needed for browser deployment.
 
-Keep bridge-config.json and BRIDGE_TOKEN private. Do not publish this ZIP.
-People connecting need only a Telegram client supporting WEB proxies.
-Original FakeTLS links remain available separately. Cloudflare/network limits apply.
+Keep bridge-config.json and this private ZIP out of public repositories.
+Telegram users need a client that supports WEB proxies. Hosting/network limits apply.

@@ -126,11 +126,15 @@ async function refresh(force = false) {
   $('usage-status').textContent = usage?.available ? 'Updates every 15 seconds. Users are estimated from active IPs; shared networks may count as one. Traffic includes direct and WEB proxy connections.' : 'Live metrics are temporarily unavailable. Saved traffic totals are retained.';
 
   $('traffic-upload-bar').style.width = usage?.total_bytes ? (usage.upload_bytes / usage.total_bytes * 100) + '%' : '0%';
-  $('endpoint').textContent = s.host + ':' + s.port;
+  const networkReady = s.network_ready !== false && Boolean(s.host);
+  $('endpoint').textContent = networkReady ? s.host + ':' + s.port : 'Detecting public address...';
+  $('network-note').textContent = networkReady ? 'Public address verified automatically. No PUBLIC_HOST or PUBLIC_PORT entry needed.' : 'Finding and verifying your direct proxy address. This updates automatically.';
+  $('copy-link').disabled = !networkReady;
+  $('copy-tg-link').disabled = !networkReady;
   $('tls-host').textContent = s.tls_host;
   $('web-link').value = s.web_link;
   $('tg-link').value = s.tg_link;
-  $('open-telegram').href = s.tg_link;
+  $('open-telegram').href = networkReady ? s.tg_link : '#/links';
   $('sponsor-badge').textContent = s.settings.enabled ? 'Configured' : 'Not enabled';
   $('sponsor-badge').classList.toggle('on', s.settings.enabled);
   if (s.bridge) {
@@ -153,7 +157,7 @@ async function refresh(force = false) {
     dirty = false;
   }
   $('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-  if (!s.persistent) notice('Attach a Railway volume at /data to keep saved settings across redeploys.', true);
+  if (!s.persistent) notice('Keep persistent deployment storage enabled to preserve settings.', true);
   renderRoute();
 }
 
@@ -223,7 +227,7 @@ async function copy(value, label, input) {
     await navigator.clipboard.writeText(value);
     notice(label + ' copied.');
   } catch {
-    if (input) { input.focus(); input.select(); }
+    if (input) { const details = input.closest('details'); if (details) details.open = true; input.focus(); input.select(); }
     notice('Automatic copying is unavailable. ' + (input ? 'The link is selected; press Ctrl+C or use your device\'s Copy command.' : 'Copy the key from your deployment logs.'), true);
   }
 }
@@ -247,19 +251,19 @@ $('bridge-form').addEventListener('submit', async event => {
   } catch (error) { notice(error.message, true); }
   finally { saving = false; $('save-bridge').disabled = false; }
 });
-async function loadWorkerCode() {
+async function loadWorkerCode(reveal = false) {
   const response = await fetch('/api/bridge/standalone', {credentials:'same-origin'});
   if (!response.ok) throw new Error('Could not load Worker code. Sign in again and retry.');
   const source = await response.text();
   $('worker-source').value = source;
-  $('worker-source-box').open = true;
+  $('worker-source-box').open = reveal;
   return source;
 }
 $('copy-worker-code').addEventListener('click', async () => {
-  try { await copy(await loadWorkerCode(), 'Standalone Worker code', $('worker-source')); }
+  try { await copy(await loadWorkerCode(), 'Ready-to-deploy Worker code', $('worker-source')); }
   catch (error) { notice(error.message, true); }
 });
-$('load-worker-code').addEventListener('click', () => loadWorkerCode().catch(error => notice(error.message, true)));
+$('load-worker-code').addEventListener('click', () => loadWorkerCode(true).catch(error => notice(error.message, true)));
 $('copy-bridge-token').addEventListener('click', async () => {
   try {
     const result = await api('/api/bridge/token');
