@@ -135,7 +135,7 @@ async function refreshLatestVideo() {
       $('latest-video-image-state').textContent = '';
       title.textContent = result.state === 'empty' ? 'No videos available' : result.state === 'loading' ? '' : 'YouTube updates';
       title.title = ''; $('latest-video-full-title').textContent = '';
-      $('latest-video-status').textContent = {loading:'Loading latest video?', unconfigured:'Set the YouTube API key in your hosting environment to enable live updates.', error:'YouTube is temporarily unavailable. We?ll retry automatically.', empty:'No public videos are available on this channel.'}[result.state] || 'Video unavailable';
+      $('latest-video-status').textContent = {loading:'Loading latest video?', unconfigured:'The configured YouTube channel ID is invalid.', error:'YouTube is temporarily unavailable. We?ll retry automatically.', empty:'No public videos are available on this channel.'}[result.state] || 'Video unavailable';
       videoLinks(null); fitVideoTitle(); return;
     }
     // Replace every displayed field from one snapshot, never merge different videos.

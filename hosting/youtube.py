@@ -1,4 +1,4 @@
-﻿"""Official YouTube Data API metadata and same-origin, video-bound thumbnails."""
+"""Automatic public-feed updates, optional API statistics, and video-bound thumbnails."""
 import copy
 from datetime import datetime, timezone
 import json
@@ -9,10 +9,36 @@ import re
 import threading
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 from urllib.parse import urlencode, urlsplit
 
 LOG = logging.getLogger(__name__)
 DEFAULT_CHANNEL = 'UCOUsLDQyNHhp_g7-jeZAJyg'
+
+
+def parse_feed(raw, channel):
+    ns = {'a': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015',
+          'media': 'http://search.yahoo.com/mrss/'}
+    root = ET.fromstring(raw)
+    videos = []
+    for entry in root.findall('a:entry', ns):
+        vid = entry.findtext('yt:videoId', '', ns)
+        published = entry.findtext('a:published', '', ns)
+        stamp = timestamp(published)
+        if (not re.fullmatch(r'[A-Za-z0-9_-]{11}', vid)
+                or entry.findtext('yt:channelId', '', ns) != channel
+                or stamp is None or stamp > time.time()):
+            continue
+        title = entry.findtext('a:title', None, ns)
+        if title is None:
+            continue
+        urls = [node.get('url') for node in entry.findall('media:group/media:thumbnail', ns)
+                if image_url(node.get('url'))]
+        videos.append({'videoId': vid, 'title': title, 'publishedAt': published,
+                       'thumbnail': urls[0] if urls else None, 'thumbnails': urls,
+                       'views': None, 'likes': None, 'duration': None,
+                       'videoUrl': 'https://www.youtube.com/watch?v=' + vid})
+    return max(videos, key=lambda v: timestamp(v['publishedAt']), default=None)
 
 
 def timestamp(value):
@@ -27,7 +53,7 @@ def image_url(value):
     if not isinstance(value, str):
         return False
     u = urlsplit(value)
-    return u.scheme == 'https' and u.hostname in ('i.ytimg.com', 'i9.ytimg.com', 'img.youtube.com') and not u.username and not u.password and not u.port
+    return u.scheme == 'https' and (bool(re.fullmatch(r'i[0-9]?\.ytimg\.com', u.hostname or '')) or u.hostname == 'img.youtube.com') and not u.username and not u.password and not u.port
 
 
 def normalize(video, channel, now):
@@ -97,6 +123,8 @@ class LatestVideo:
         return result
 
     def fetch_latest(self):
+        if not self.key:
+            return self.fetch_feed()
         channels = self.request('channels', part='contentDetails', id=self.channel)
         items = channels.get('items', [])
         if not items:
@@ -124,6 +152,15 @@ class LatestVideo:
             if token in seen:
                 raise ValueError('Repeated playlist page')
             seen.add(token)
+
+    def fetch_feed(self):
+        url = 'https://www.youtube.com/feeds/videos.xml?' + urlencode({'channel_id': self.channel})
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            raw = response.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise ValueError('Oversized feed')
+        return parse_feed(raw, self.channel)
 
     def refresh(self):
         try:
@@ -157,7 +194,7 @@ class LatestVideo:
 
     def get(self):
         with self.lock:
-            configured = bool(self.key and re.fullmatch(r'UC[A-Za-z0-9_-]{22}', self.channel))
+            configured = bool(re.fullmatch(r'UC[A-Za-z0-9_-]{22}', self.channel))
             if not configured:
                 return {'ok': False, 'state': 'unconfigured', 'refreshAfter': self.interval}
             if not self.refreshing and time.monotonic() >= self.retry_at:

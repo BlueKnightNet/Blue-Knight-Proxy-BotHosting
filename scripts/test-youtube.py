@@ -1,4 +1,4 @@
-﻿"""Synthetic API fixtures for tests only; never served by production."""
+"""Synthetic API fixtures for tests only; never served by production."""
 import copy
 import io
 import json
@@ -90,10 +90,25 @@ class VideoTests(unittest.TestCase):
             self.assertIsNone(client.thumbnail('zyxwvutsrqp'))
             self.assertEqual(fetch.call_count,2)
 
-    def test_unconfigured_never_uses_old_feed_or_example_data(self):
+    def test_no_key_uses_public_feed_automatically(self):
         client=self.make();client.key=''
-        with patch.object(client,'request') as request:
-            self.assertEqual(client.get()['state'],'unconfigured');request.assert_not_called()
+        with patch.object(client,'fetch_feed',return_value=None) as feed, patch.object(client,'request') as request:
+            client.refresh()
+            self.assertEqual(client.get()['state'],'empty')
+            feed.assert_called_once();request.assert_not_called()
+
+    def test_feed_title_thumbnail_date_same_video_and_no_invented_stats(self):
+        from hosting.youtube import parse_feed
+        xml = '<feed xmlns="http://www.w3.org/2005/Atom" xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/">'
+        for vid, date in [('abcdefghijk','2026-01-01'),('zyxwvutsrqp','2026-02-01')]:
+            xml += f'<entry><yt:videoId>{vid}</yt:videoId><yt:channelId>{DEFAULT_CHANNEL}</yt:channelId><title>Title &amp; exact</title><published>{date}T00:00:00Z</published><media:group><media:thumbnail url="https://i3.ytimg.com/vi/{vid}/hqdefault.jpg"/></media:group></entry>'
+        video=parse_feed((xml+'</feed>').encode(),DEFAULT_CHANNEL)
+        self.assertEqual(video['videoId'],'zyxwvutsrqp')
+        self.assertIn(video['videoId'],video['thumbnail'])
+        self.assertIn(video['videoId'],video['videoUrl'])
+        self.assertEqual(video['title'],'Title & exact')
+        self.assertEqual(video['publishedAt'],'2026-02-01T00:00:00Z')
+        self.assertIsNone(video['views']);self.assertIsNone(video['likes'])
 
     def test_invalid_thumbnail_origin_is_not_proxied(self):
         raw=fixture();raw['snippet']['thumbnails']={'maxres':{'url':'http://127.0.0.1/private'}}
