@@ -42,6 +42,21 @@ class VideoTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertEqual(result['url'], 'https://www.youtube.com/@BlueKnight-Net/videos')
 
+    def test_thumbnail_cached_and_invalid_response_rejected(self):
+        cache = LatestVideo()
+        cache.cached = parse_video(FEED)
+        cache.retry_at = float('inf')
+        jpeg = b'\xff\xd8\xffexample'
+        with patch('hosting.youtube.urllib.request.urlopen', return_value=io.BytesIO(jpeg)) as fetch:
+            self.assertEqual(cache.thumbnail(), jpeg)
+            self.assertEqual(cache.thumbnail(), jpeg)
+            fetch.assert_called_once()
+        cache.thumbnail_id = None
+        with patch('hosting.youtube.urllib.request.urlopen', return_value=io.BytesIO(b'<html>error</html>')) as fetch:
+            self.assertIsNone(cache.thumbnail())
+            self.assertIsNone(cache.thumbnail())
+            fetch.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

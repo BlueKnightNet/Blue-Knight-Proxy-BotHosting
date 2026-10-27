@@ -257,6 +257,17 @@ class HTTPTests(unittest.TestCase):
         self.assertNotIn(b"private-example", self.request("/")[2])
         self.assertEqual(self.request("/../server.py")[0], 404)
 
+    def test_thumbnail_served_locally_under_production_csp(self):
+        self.assertEqual(self.request('/api/latest-video/thumbnail')[0], 401)
+        _, headers, _ = self.request('/api/login', {'password': 'test-password'})
+        cookie = headers['Set-Cookie'].split(';', 1)[0]
+        with patch.object(panel.latest_video, 'thumbnail', return_value=b'\xff\xd8\xffimage'):
+            code, headers, body = self.request('/api/latest-video/thumbnail?v=example', headers={'Cookie': cookie})
+        self.assertEqual(code, 200)
+        self.assertEqual(headers['Content-Type'], 'image/jpeg')
+        self.assertIn("default-src 'self'", headers['Content-Security-Policy'])
+        self.assertTrue(body.startswith(b'\xff\xd8\xff'))
+
     def test_first_visit_password_setup_requires_code_and_cannot_reset_owner(self):
         with tempfile.TemporaryDirectory() as directory:
             self.app.proxy.directory = Path(directory)

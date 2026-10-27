@@ -663,6 +663,13 @@ def handler_for(app):
                 name = path.rsplit("/", 1)[-1]
                 return self.reply(200, (ROOT / "assets" / name).read_bytes(), "image/png" if name.endswith("png") else "image/jpeg")
             session = self.session()
+            if path == "/api/latest-video/thumbnail":
+                if not session:
+                    return self.reply(401, {"error": "Sign in required"})
+                thumbnail = latest_video.thumbnail()
+                if thumbnail is None:
+                    return self.reply(503, {"error": "Thumbnail temporarily unavailable"})
+                return self.reply(200, thumbnail, "image/jpeg")
             if path == "/api/latest-video":
                 if not session:
                     return self.reply(401, {"error": "Sign in required"})

@@ -28,6 +28,34 @@ class LatestVideo:
         self.cached = {"ok": False, "url": CHANNEL_URL, "stale": True}
         self.retry_at = 0
         self.lock = threading.Lock()
+        self.thumbnail_lock = threading.Lock()
+        self.thumbnail_id = None
+        self.thumbnail_bytes = None
+        self.thumbnail_retry_at = 0
+
+    def thumbnail(self):
+        video = self.get()
+        video_id = video.get("videoId")
+        if not video_id:
+            return None
+        with self.thumbnail_lock:
+            if self.thumbnail_id == video_id:
+                if self.thumbnail_bytes or time.monotonic() < self.thumbnail_retry_at:
+                    return self.thumbnail_bytes
+            self.thumbnail_id = video_id
+            self.thumbnail_bytes = None
+            try:
+                # Only the feed's validated ID can select an image; never proxy a supplied URL.
+                url = "https://i.ytimg.com/vi/" + video_id + "/hqdefault.jpg"
+                with urllib.request.urlopen(url, timeout=8) as response:
+                    data = response.read(2 * 1024 * 1024 + 1)
+                if len(data) > 2 * 1024 * 1024 or not data.startswith(b"\xff\xd8\xff"):
+                    raise ValueError("Invalid thumbnail")
+                self.thumbnail_bytes = data
+            except (OSError, ValueError):
+                pass
+            self.thumbnail_retry_at = time.monotonic() + 300
+            return self.thumbnail_bytes
 
     def get(self):
         with self.lock:

@@ -102,8 +102,9 @@ async function refreshLatestVideo() {
     $('latest-video-label').textContent = video.stale ? 'FROM BLUE KNIGHT' : 'LATEST ON YOUTUBE';
     $('latest-video-action').textContent = 'Watch video ↗';
     const thumbnail = $('latest-video-image');
-    thumbnail.onerror = () => { thumbnail.src = '/panel/assets/bg.jpg'; thumbnail.onerror = null; };
-    thumbnail.src = 'https://i.ytimg.com/vi/' + video.videoId + '/hqdefault.jpg';
+    thumbnail.onerror = () => { thumbnail.hidden = true; };
+    thumbnail.onload = () => { thumbnail.hidden = false; };
+    thumbnail.src = '/api/latest-video/thumbnail?v=' + video.videoId;
     const published = new Date(video.published);
     $('latest-video-date').textContent = Number.isNaN(published.getTime()) ? '' : published.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
   } catch { /* Keep the channel link usable when YouTube cannot be reached. */ }
