@@ -124,3 +124,37 @@ when their hostnames, ports and saved secrets stay the same.
 | Sponsored channel absent | Check bot registration, Set promotion, promotion tag and propagation time. |
 | Disk limit changed | Set PANEL_STORAGE_LIMIT_MB to your actual allocation. |
 | Settings lost | Preserve .data and restore your backup instead of creating new secrets. |
+
+## Latest on YouTube card
+
+The overview card uses the official YouTube Data API v3 only. In Google Cloud,
+enable **YouTube Data API v3** and create an API key restricted to that API.
+In Bot-Hosting environment variables set:
+
+- `YOUTUBE_API_KEY`: your key, marked **secret**. Never put it in the repository or Worker.
+- `YOUTUBE_CHANNEL_ID`: your channel ID; defaults to `UCOUsLDQyNHhp_g7-jeZAJyg` (Blue Knight).
+- `YOUTUBE_CACHE_SECONDS`: optional refresh interval; default `600` (10 minutes),
+  minimum `300`, maximum `86400` seconds.
+
+Restart after changing these variables. No API credential is sent to the browser.
+Without a key the card shows a configuration message, never invented metadata.
+
+The server scans all uploads pages and compares actual public publication dates,
+excluding unavailable/private videos and upcoming broadcasts/premieres. This costs
+one channels request plus one playlistItems and one videos request per nonempty
+uploads page each refresh. Large channels should choose a longer interval to fit
+their API quota. Refreshes are shared across visitors and run in the background
+when the panel is used. An open panel polls the cached result automatically.
+
+The last successful API snapshot is stored in `.data/youtube-cache.json`. During
+API failures it remains visible with a stale-data label; failures are logged without
+credentials. A successful empty result clears the previous video. Deletions and new
+publications are detected on the next successful refresh, not in real time.
+Thumbnails are fetched from API-provided URLs and cached by video ID. They are
+served through the panel, with resolution fallback and no direct browser access
+to YouTube's image servers required. Hidden statistics are omitted. Views/likes
+are shown as exact grouped integers, and dates use the API timestamp in UTC.
+
+API references: https://developers.google.com/youtube/v3/docs/channels/list,
+https://developers.google.com/youtube/v3/docs/playlistItems/list,
+https://developers.google.com/youtube/v3/docs/videos/list.

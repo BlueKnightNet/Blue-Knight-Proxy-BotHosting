@@ -89,25 +89,96 @@ function bytes(value) {
   return value.toLocaleString(undefined, {maximumFractionDigits:index ? 2 : 0}) + ' ' + units[index];
 }
 
+let videoRequestPending = false;
+let currentVideoId = null;
+let videoTimer;
+function fitVideoTitle() {
+  const title = $('latest-video-title');
+  if (!title.clientWidth) return;
+  title.style.fontSize = '26px';
+  let size = 26;
+  while (title.scrollWidth > title.clientWidth + 1 && size > 12) {
+    size -= 0.5;
+    title.style.fontSize = size + 'px';
+  }
+  title.dataset.truncated = String(title.scrollWidth > title.clientWidth + 1);
+}
+new ResizeObserver(fitVideoTitle).observe($('latest-video-copy') || $('latest-video-title').parentElement);
+document.fonts.ready.then(fitVideoTitle);
+function videoLinks(url) {
+  for (const id of ['latest-video-link', 'latest-video-action']) {
+    const link = $(id);
+    if (url) { link.href = url; link.removeAttribute('aria-disabled'); link.removeAttribute('tabindex'); }
+    else { link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true'); link.tabIndex = -1; }
+  }
+}
+function videoCount(value) {
+  return typeof value === 'string' && /^\d+$/.test(value) ? BigInt(value).toLocaleString() : null;
+}
 async function refreshLatestVideo() {
-  if (Date.now() < videoRefreshAt) return;
-  videoRefreshAt = Date.now() + 300000;
+  if (videoRequestPending || Date.now() < videoRefreshAt || !statusData) return;
+  videoRequestPending = true;
+  let delay = 300000;
   try {
     const response = await fetch('/api/latest-video', {credentials:'same-origin'});
-    if (!response.ok) return;
-    const video = await response.json();
-    if (!video.ok || !/^[A-Za-z0-9_-]{11}$/.test(video.videoId)) return;
-    $('latest-video-link').href = 'https://www.youtube.com/watch?v=' + video.videoId;
-    $('latest-video-title').textContent = video.title || 'Watch on YouTube';
-    $('latest-video-label').textContent = video.stale ? 'FROM BLUE KNIGHT' : 'LATEST ON YOUTUBE';
-    $('latest-video-action').textContent = 'Watch video ↗';
-    const thumbnail = $('latest-video-image');
-    thumbnail.onerror = () => { thumbnail.hidden = true; };
-    thumbnail.onload = () => { thumbnail.hidden = false; };
-    thumbnail.src = '/api/latest-video/thumbnail?v=' + video.videoId;
-    const published = new Date(video.published);
-    $('latest-video-date').textContent = Number.isNaN(published.getTime()) ? '' : published.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
-  } catch { /* Keep the channel link usable when YouTube cannot be reached. */ }
+    if (!response.ok) throw new Error('Video request failed');
+    const result = await response.json();
+    delay = Math.max(3000, Number(result.refreshAfter || 600) * 1000);
+    const card = $('latest-video-card'), title = $('latest-video-title'), thumbnail = $('latest-video-image');
+    const video = result.video;
+    if (!result.ok || !video || !/^[A-Za-z0-9_-]{11}$/.test(video.videoId)) {
+      currentVideoId = null;
+      card.dataset.state = result.state || 'error';
+      card.setAttribute('aria-busy', String(result.state === 'loading'));
+      thumbnail.hidden = true; thumbnail.removeAttribute('src');
+      $('latest-video-stats').hidden = true;
+      $('latest-video-image-state').textContent = '';
+      title.textContent = result.state === 'empty' ? 'No videos available' : result.state === 'loading' ? '' : 'YouTube updates';
+      title.title = ''; $('latest-video-full-title').textContent = '';
+      $('latest-video-status').textContent = {loading:'Loading latest video?', unconfigured:'Set the YouTube API key in your hosting environment to enable live updates.', error:'YouTube is temporarily unavailable. We?ll retry automatically.', empty:'No public videos are available on this channel.'}[result.state] || 'Video unavailable';
+      videoLinks(null); fitVideoTitle(); return;
+    }
+    // Replace every displayed field from one snapshot, never merge different videos.
+    const changed = currentVideoId !== video.videoId;
+    currentVideoId = video.videoId;
+    card.dataset.state = 'ready'; card.setAttribute('aria-busy', 'false');
+    title.textContent = video.title; title.title = video.title;
+    $('latest-video-full-title').textContent = video.title;
+    videoLinks('https://www.youtube.com/watch?v=' + video.videoId);
+    $('latest-video-link').setAttribute('aria-label', 'Watch on YouTube: ' + video.title);
+    const date = new Date(video.publishedAt);
+    $('latest-video-date-badge').hidden = !video.publishedAt || Number.isNaN(date.getTime());
+    $('latest-video-date').textContent = $('latest-video-date-badge').hidden ? '' : date.toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric',timeZone:'UTC'});
+    $('latest-video-date').dateTime = video.publishedAt || '';
+    for (const name of ['views','likes']) {
+      const count = videoCount(video[name]);
+      $('latest-video-' + name + '-badge').hidden = count === null;
+      $('latest-video-' + name).textContent = count === null ? '' : count + ' ' + name;
+    }
+    $('latest-video-stats').hidden = false;
+    $('latest-video-status').textContent = result.stale ? 'Showing the last successful YouTube update.' : '';
+    if (changed || thumbnail.hidden) {
+      thumbnail.hidden = true; thumbnail.removeAttribute('src');
+      thumbnail.alt = video.title;
+      $('latest-video-image-state').textContent = video.thumbnail ? 'Loading thumbnail?' : 'Thumbnail unavailable';
+      if (video.thumbnail) {
+        const expected = video.videoId;
+        const image = new Image();
+        image.onload = () => { if(currentVideoId !== expected) return; thumbnail.src = image.src; thumbnail.hidden = false; $('latest-video-image-state').textContent = ''; };
+        image.onerror = () => { if(currentVideoId === expected) $('latest-video-image-state').textContent = 'Thumbnail unavailable'; };
+        image.src = '/api/latest-video/thumbnail?v=' + expected;
+      }
+    }
+    fitVideoTitle();
+  } catch {
+    $('latest-video-status').textContent = currentVideoId ? 'Showing the last successful YouTube update.' : 'YouTube is temporarily unavailable. We?ll retry automatically.';
+    if (!currentVideoId) { $('latest-video-card').dataset.state = 'error'; $('latest-video-card').setAttribute('aria-busy','false'); }
+  } finally {
+    videoRequestPending = false;
+    videoRefreshAt = Date.now() + delay;
+    clearTimeout(videoTimer);
+    videoTimer = setTimeout(() => { if(statusData) refreshLatestVideo(); }, delay);
+  }
 }
 
 function renderResources(resource = {}) {

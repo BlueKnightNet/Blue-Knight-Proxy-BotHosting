@@ -20,7 +20,7 @@ import time
 import zipfile
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 ROOT = Path(__file__).resolve().parent
 BRIDGE_ROOT = ROOT.parent / "bridge"
@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT.parent))
 from hosting.network import PublicNetwork, panel_origin
 from hosting.youtube import LatestVideo
 
-latest_video = LatestVideo()
+latest_video = LatestVideo(os.environ.get("PANEL_DATA_DIR"))
 
 
 class Resources:
@@ -666,7 +666,7 @@ def handler_for(app):
             if path == "/api/latest-video/thumbnail":
                 if not session:
                     return self.reply(401, {"error": "Sign in required"})
-                thumbnail = latest_video.thumbnail()
+                thumbnail = latest_video.thumbnail(parse_qs(urlsplit(self.path).query).get("v", [""])[0])
                 if thumbnail is None:
                     return self.reply(503, {"error": "Thumbnail temporarily unavailable"})
                 return self.reply(200, thumbnail, "image/jpeg")
