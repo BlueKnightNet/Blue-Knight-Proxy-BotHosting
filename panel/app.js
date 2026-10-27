@@ -3,6 +3,7 @@ let dirty = false;
 let saving = false;
 let bridgeDirty = false;
 let noticeTimer;
+let videoRefreshAt = 0;
 const $ = id => document.getElementById(id);
 const routeAliases = {overview:'overview', home:'overview', sponsor:'sponsor', links:'links', connection:'links', bridge:'bridge'};
 
@@ -88,6 +89,26 @@ function bytes(value) {
   return value.toLocaleString(undefined, {maximumFractionDigits:index ? 2 : 0}) + ' ' + units[index];
 }
 
+async function refreshLatestVideo() {
+  if (Date.now() < videoRefreshAt) return;
+  videoRefreshAt = Date.now() + 300000;
+  try {
+    const response = await fetch('/api/latest-video', {credentials:'same-origin'});
+    if (!response.ok) return;
+    const video = await response.json();
+    if (!video.ok || !/^[A-Za-z0-9_-]{11}$/.test(video.videoId)) return;
+    $('latest-video-link').href = 'https://www.youtube.com/watch?v=' + video.videoId;
+    $('latest-video-title').textContent = video.title || 'Watch on YouTube';
+    $('latest-video-label').textContent = video.stale ? 'FROM BLUE KNIGHT' : 'LATEST ON YOUTUBE';
+    $('latest-video-action').textContent = 'Watch video ↗';
+    const thumbnail = $('latest-video-image');
+    thumbnail.onerror = () => { thumbnail.src = '/panel/assets/bg.jpg'; thumbnail.onerror = null; };
+    thumbnail.src = 'https://i.ytimg.com/vi/' + video.videoId + '/hqdefault.jpg';
+    const published = new Date(video.published);
+    $('latest-video-date').textContent = Number.isNaN(published.getTime()) ? '' : published.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+  } catch { /* Keep the channel link usable when YouTube cannot be reached. */ }
+}
+
 function renderResources(resource = {}) {
   for (const name of ['cpu', 'memory', 'disk']) {
     const percent = resource[name + '_percent'];
@@ -111,6 +132,7 @@ async function refresh(force = false) {
   $('login-view').hidden = true;
   $('setup-view').hidden = true;
   $('dashboard').hidden = false;
+  void refreshLatestVideo();
   $('running').textContent = s.running ? 'Online' : 'Starting';
   $('running').classList.toggle('online', s.running);
   $('engine').textContent = s.engine;

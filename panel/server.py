@@ -26,6 +26,9 @@ ROOT = Path(__file__).resolve().parent
 BRIDGE_ROOT = ROOT.parent / "bridge"
 sys.path.insert(0, str(ROOT.parent))
 from hosting.network import PublicNetwork, panel_origin
+from hosting.youtube import LatestVideo
+
+latest_video = LatestVideo()
 
 
 class Resources:
@@ -660,6 +663,10 @@ def handler_for(app):
                 name = path.rsplit("/", 1)[-1]
                 return self.reply(200, (ROOT / "assets" / name).read_bytes(), "image/png" if name.endswith("png") else "image/jpeg")
             session = self.session()
+            if path == "/api/latest-video":
+                if not session:
+                    return self.reply(401, {"error": "Sign in required"})
+                return self.reply(200, latest_video.get())
             if path == "/api/status":
                 if not session:
                     return self.reply(401, {"error": "Sign in required"})
